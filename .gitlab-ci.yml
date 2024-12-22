@@ -2,6 +2,7 @@
 stages:
   - preconfig
   - build
+  - deploy
 
 aws_configure:
   stage: preconfig
@@ -32,3 +33,17 @@ build_image:
     - docker tag php-fpm:latest $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/php-fpm:latest
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/built-nginx:latest
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/php-fpm:latest
+
+deploy_to_ecs:
+  image:
+    name: amazon/aws-cli
+    entrypoint: [""]
+  stage: deploy
+  script:
+    # Deploy the latest image to ECS by updating the service
+    - echo "Setting up AWS CLI"
+    - aws configure set region $AWS_DEFAULT_REGION
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws ecs update-service --cluster $CI_AWS_ECS_CLUSTER --service $CI_AWS_ECS_SERVICE --force-new-deployment --region $AWS_DEFAULT_REGION
+    - echo "ECS service update triggered successfully."
