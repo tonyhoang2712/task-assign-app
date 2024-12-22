@@ -1,21 +1,34 @@
-unit_test:
-  stage: test
-  image: php:7.4-fpm
-  tags:
-    - aws
+
+stages:
+  - preconfig
+  - build
+
+aws_configure:
+  stage: preconfig
+  image:
+    name: amazon/aws-cli
+    entrypoint: [""]
+  script:
+    - echo "Setting up AWS CLI"
+    - aws configure set region $AWS_DEFAULT_REGION
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws ecr get-login-password --region $ECR_IMAGE_REGION > docker_login_password.txt
+  artifacts:
+    paths:
+    - docker_login_password.txt
+
+build_image:
+  stage: build
+  image: docker:20.10-dind
+  services:
+  - "docker:dind"
   script:
     # Install app dependencies
-    - apt-get update -y \
-     && apt-get install -y libzip-dev \
-     && docker-php-ext-install zip \
-     && apt-get install zip unzip
-    - apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
-    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-    - composer install --prefer-dist --no-cache
-    # - cp .env.example .env
-    # Generate an environment key
-    # - php artisan key:generate
-    # Run migrations
-    - php artisan test
-    # Run tests
-    # - vendor/bin/phpunit
+    - cat docker_login_password.txt | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com
+    - docker build -f ./deploy-helper/nginx/Dockerfile.nginx -t built-nginx:latest .
+    - docker build -f Dockerfile -t php-fpm:latest .
+    - docker tag built-nginx:latest $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/built-nginx:latest
+    - docker tag php-fpm:latest $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/php-fpm:latest
+    - docker push $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/built-nginx:latest
+    - docker push $AWS_ACCOUNT_ID.dkr.ecr.$ECR_IMAGE_REGION.amazonaws.com/gl/php-fpm:latest
